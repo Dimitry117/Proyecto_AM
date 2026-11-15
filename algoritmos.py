@@ -10,7 +10,7 @@ def ejecutar_ga(fn_eval, tipo_prob, objetivo, dominio, dim, params):
         poblacion = np.random.uniform(dominio[0], dominio[1], (pop_size, dim))
     elif tipo_prob == "Binario":
         poblacion = np.random.randint(0, 2, (pop_size, dim))
-    elif tipo_prob == "Categorico":
+    elif tipo_prob in ["Categórico", "Categorico", "Discreto"]:
         poblacion = np.array([np.random.permutation(dim) for _ in range(pop_size)])
 
     historial = []
@@ -52,7 +52,7 @@ def ejecutar_ga(fn_eval, tipo_prob, objetivo, dominio, dim, params):
             "motivo": ""
         }
 
-        # Criterio de paro por estancamiento (ej. 30 iteraciones sin mejora)
+        # Criterio de paro por estancamiento
         if sin_mejora >= 30 and gen > 30:
             motivo_termino = f"Convergencia temprana (sin mejora por {sin_mejora} iteraciones)"
             break
@@ -90,7 +90,7 @@ def ejecutar_ga(fn_eval, tipo_prob, objetivo, dominio, dim, params):
                     if np.random.rand() < mut_rate:
                         nueva_pob[i][j] = 1 - nueva_pob[i][j] # Bit-flip
 
-        elif tipo_prob == "Categorico":
+        elif tipo_prob in ["Categórico", "Categorico", "Discreto"]:
             # Mutación Swap para mantener permutaciones válidas
             for i in range(pop_size):
                 if np.random.rand() < mut_rate and dim > 1:
@@ -109,16 +109,17 @@ def ejecutar_ga(fn_eval, tipo_prob, objetivo, dominio, dim, params):
         "terminado": True,
         "motivo": motivo_termino
     }
+
+
 def ejecutar_pso(fn_eval, tipo_prob, objetivo, dominio, dim, params):
     """
     Implementación del algoritmo de Enjambre de Partículas (PSO).
     Especializado en espacios de búsqueda continuos.
     """
-    # Verificación de seguridad (PSO clásico opera en dominio continuo)
     if tipo_prob != "Continuo":
         yield {
             "iteracion": 0, "total": params["iteraciones"],
-            "mejor_valor": 0, "mejor_sol": np.zeros(dim),
+            "mejor_valor": 0, "mejor_sol": [],
             "historial": [], "terminado": True,
             "motivo": f"Error: PSO no opera nativamente en el tipo {tipo_prob}"
         }
@@ -136,19 +137,14 @@ def ejecutar_pso(fn_eval, tipo_prob, objetivo, dominio, dim, params):
     motivo_termino = "Máximo de iteraciones alcanzado"
 
     # 2. Inicialización
-    # Posiciones iniciales aleatorias dentro del dominio
     posiciones = np.random.uniform(dominio[0], dominio[1], (pop_size, dim))
-    
-    # Velocidades iniciales (es buena práctica limitarlas a un % del tamaño del dominio)
     rango = dominio[1] - dominio[0]
-    v_max = 0.2 * rango  # Límite máximo de velocidad (20% del dominio)
+    v_max = 0.2 * rango
     velocidades = np.random.uniform(-v_max, v_max, (pop_size, dim))
 
-    # Inicializar el Mejor Personal (Pbest)
     pbest_pos = posiciones.copy()
     pbest_val = np.array([fn_eval(p) for p in posiciones])
 
-    # Inicializar el Mejor Global (Gbest)
     if objetivo == "Maximizar":
         idx_gbest = np.argmax(pbest_val)
     else:
@@ -159,46 +155,30 @@ def ejecutar_pso(fn_eval, tipo_prob, objetivo, dominio, dim, params):
 
     # 3. Bucle Principal de Optimización
     for gen in range(1, gens + 1):
-        # Componentes estocásticos (números aleatorios entre 0 y 1 para cada dimensión)
         r1 = np.random.rand(pop_size, dim)
         r2 = np.random.rand(pop_size, dim)
 
-        # Actualización de Velocidad:
-        # V = Inercia + Componente Cognitivo (Pbest) + Componente Social (Gbest)
         velocidades = (w * velocidades + 
                        c1 * r1 * (pbest_pos - posiciones) + 
                        c2 * r2 * (gbest_pos - posiciones))
         
-        # Limitar velocidades para evitar que las partículas salgan volando (Explosión del Enjambre)
         velocidades = np.clip(velocidades, -v_max, v_max)
-
-        # Actualización de Posición
         posiciones = posiciones + velocidades
-        
-        # Mantener partículas estrictamente dentro del dominio
         posiciones = np.clip(posiciones, dominio[0], dominio[1])
-
-        # Evaluar la nueva población
         valores_f = np.array([fn_eval(p) for p in posiciones])
-
         mejora_global_en_iteracion = False
 
-        # Actualizar Pbest y Gbest
         for i in range(pop_size):
-            # ¿Es mejor que su récord personal?
             mejora_pbest = (valores_f[i] > pbest_val[i]) if objetivo == "Maximizar" else (valores_f[i] < pbest_val[i])
             if mejora_pbest:
                 pbest_val[i] = valores_f[i]
                 pbest_pos[i] = posiciones[i].copy()
-
-                # ¿Es mejor que el récord global?
                 mejora_gbest = (valores_f[i] > gbest_val) if objetivo == "Maximizar" else (valores_f[i] < gbest_val)
                 if mejora_gbest:
                     gbest_val = valores_f[i]
                     gbest_pos = posiciones[i].copy()
                     mejora_global_en_iteracion = True
 
-        # Control de convergencia
         if mejora_global_en_iteracion:
             sin_mejora = 0
         else:
@@ -206,7 +186,6 @@ def ejecutar_pso(fn_eval, tipo_prob, objetivo, dominio, dim, params):
 
         historial.append(float(gbest_val))
 
-        # 4. Emitir el estado en tiempo real (Igual que en GA)
         yield {
             "iteracion": gen,
             "total": gens,
@@ -217,12 +196,10 @@ def ejecutar_pso(fn_eval, tipo_prob, objetivo, dominio, dim, params):
             "motivo": ""
         }
 
-        # Criterio de paro por estancamiento (mismos 30 del GA)
         if sin_mejora >= 30 and gen > 30:
             motivo_termino = f"Convergencia temprana (sin mejora por {sin_mejora} iteraciones)"
             break
 
-    # 5. Resultado final
     yield {
         "iteracion": gen,
         "total": gens,
@@ -232,5 +209,129 @@ def ejecutar_pso(fn_eval, tipo_prob, objetivo, dominio, dim, params):
         "terminado": True,
         "motivo": motivo_termino
     }
-# Aquí mismo agregas ejecutar_pso, ejecutar_de, ejecutar_aco y ejecutar_ais
-# respetando la misma firma y usando `yield` al final de cada iteración.
+
+
+def ejecutar_aco(fn_eval, tipo_prob, objetivo, dominio, dim, params):
+    """
+    Implementación del algoritmo de Colonia de Hormigas (ACO).
+    Especializado en problemas combinatorios/categóricos (ej. TSP).
+    """
+    if tipo_prob not in ["Categórico", "Categorico", "Discreto"]:
+        yield {
+            "iteracion": 0, "total": params["iteraciones"],
+            "mejor_valor": 0, "mejor_sol": [],
+            "historial": [], "terminado": True,
+            "motivo": f"Error: ACO está diseñado para problemas Categóricos, no {tipo_prob}"
+        }
+        return
+
+    # 1. Extracción de hiperparámetros
+    num_hormigas = params.get("hormigas", 20)
+    gens = params["iteraciones"]
+    alpha = params.get("alpha", 1.0)
+    beta = params.get("beta", 2.0)
+    evap = params.get("evaporacion", 0.5)
+    q = params.get("q", 100.0)
+
+    if "matriz_distancias" in params:
+        distancias = params["matriz_distancias"]
+    else:
+        distancias = np.ones((dim, dim))
+        np.fill_diagonal(distancias, 0)
+
+    distancias_seguras = np.where(distancias == 0, 1e-10, distancias)
+    visibilidad = 1.0 / distancias_seguras
+
+    # 2. Inicialización
+    feromonas = np.ones((dim, dim)) * 0.1 
+    historial = []
+    sin_mejora = 0
+    motivo_termino = "Máximo de iteraciones alcanzado"
+    
+    mejor_global_sol = None
+    mejor_global_val = -np.inf if objetivo == "Maximizar" else np.inf
+
+    # 3. Bucle Principal de Optimización
+    for gen in range(1, gens + 1):
+        soluciones_hormigas = []
+        valores_hormigas = []
+
+        for h in range(num_hormigas):
+            nodo_actual = np.random.randint(0, dim)
+            ruta = [nodo_actual]
+            nodos_visitados = set(ruta)
+
+            while len(ruta) < dim:
+                probabilidades = np.zeros(dim)
+                for j in range(dim):
+                    if j not in nodos_visitados:
+                        tau = feromonas[nodo_actual][j] ** alpha
+                        eta = visibilidad[nodo_actual][j] ** beta
+                        probabilidades[j] = tau * eta
+                
+                suma_prob = np.sum(probabilidades)
+                if suma_prob > 0:
+                    probabilidades = probabilidades / suma_prob
+                    siguiente_nodo = np.random.choice(range(dim), p=probabilidades)
+                else:
+                    nodos_restantes = list(set(range(dim)) - nodos_visitados)
+                    siguiente_nodo = np.random.choice(nodos_restantes)
+                
+                ruta.append(siguiente_nodo)
+                nodos_visitados.add(siguiente_nodo)
+                nodo_actual = siguiente_nodo
+
+            soluciones_hormigas.append(ruta)
+            valor = fn_eval(np.array(ruta))
+            valores_hormigas.append(valor)
+
+            mejora = (valor > mejor_global_val) if objetivo == "Maximizar" else (valor < mejor_global_val)
+            if mejora:
+                mejor_global_val = valor
+                mejor_global_sol = ruta.copy()
+                sin_mejora = 0
+
+        historial.append(float(mejor_global_val))
+
+        # D. Actualización de Feromonas
+        feromonas = (1.0 - evap) * feromonas
+        for i in range(num_hormigas):
+            ruta = soluciones_hormigas[i]
+            valor = valores_hormigas[i]
+            delta_tau = q / valor if (objetivo == "Minimizar" and valor > 0) else q * valor
+            
+            for j in range(dim - 1):
+                origen = ruta[j]
+                destino = ruta[j+1]
+                feromonas[origen][destino] += delta_tau
+                feromonas[destino][origen] += delta_tau 
+            
+            feromonas[ruta[-1]][ruta[0]] += delta_tau
+            feromonas[ruta[0]][ruta[-1]] += delta_tau
+
+        if not mejora:
+            sin_mejora += 1
+
+        yield {
+            "iteracion": gen,
+            "total": gens,
+            "mejor_valor": float(mejor_global_val),
+            "mejor_sol": mejor_global_sol,
+            "historial": historial,
+            "terminado": False,
+            "motivo": ""
+        }
+
+        if sin_mejora >= 30 and gen > 30:
+            motivo_termino = f"Convergencia temprana (sin mejora por {sin_mejora} iteraciones)"
+            break
+
+    yield {
+        "iteracion": gen,
+        "total": gens,
+        "mejor_valor": float(mejor_global_val),
+        "mejor_sol": mejor_global_sol,
+        "historial": historial,
+        "terminado": True,
+        "motivo": motivo_termino
+    }

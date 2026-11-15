@@ -5,7 +5,7 @@ import csv
 import numpy as np
 import matplotlib.pyplot as plt
 from problemas import CATALOGO_PROBLEMAS, DISTANCIAS_TSP
-from algoritmos import ejecutar_ga, ejecutar_pso
+from algoritmos import ejecutar_ga, ejecutar_pso, ejecutar_aco
 
 def pedir_numero(mensaje, tipo_dato=int, minimo=None, maximo=None, default=None):
     """Valida tipo y rango de entrada del usuario."""
@@ -63,6 +63,15 @@ def configurar_parametros_dinamicos(algo, tipo_prob, prob_info):
 
 def graficar_y_mostrar_solucion(tipo_prob, prob_info, resultado):
     """Genera la curva de convergencia y la representación visual de la solución."""
+    sol = resultado["mejor_sol"]
+
+    # --- PROTECCIÓN PARA GRÁFICAS VACÍAS ---
+    # Evita que el programa colapse si el algoritmo abortó y devolvió una solución vacía
+    if len(sol) == 0:
+        print("\n [!] No hay datos para graficar (solución vacía debida a incompatibilidad).")
+        return
+    # ---------------------------------------
+
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
     
     # Gráfica 1: Curva de convergencia
@@ -73,7 +82,6 @@ def graficar_y_mostrar_solucion(tipo_prob, prob_info, resultado):
     axes[0].grid(True, linestyle="--", alpha=0.6)
 
     # Gráfica 2: Representación visual de la solución
-    sol = resultado["mejor_sol"]
     if tipo_prob == "Continuo":
         axes[1].bar(range(len(sol)), sol, color="teal")
         axes[1].axhline(0, color="black", linewidth=0.8)
@@ -108,7 +116,8 @@ def exportar_resultados(algo, prob_nombre, objetivo, params, resultado):
         return
 
     timestamp = time.strftime("%Y%m%d_%H%M%S")
-    sol_lista = resultado["mejor_sol"].tolist()
+    # Manejo seguro si la solución está vacía
+    sol_lista = resultado["mejor_sol"].tolist() if isinstance(resultado["mejor_sol"], np.ndarray) else resultado["mejor_sol"]
 
     if op == "1":
         nombre_archivo = f"resultado_{algo}_{timestamp}.json"
@@ -162,7 +171,7 @@ def main():
             continue
         tipo_prob = mapa_tipos[op_tipo]
 
-        # 1.5 Selección del problema específico dentro de esa categoría
+        # 1.5 Selección del problema específico
         print(f"\n--- Submenú: Problemas de tipo {tipo_prob} ---")
         sub_catalogo = CATALOGO_PROBLEMAS[tipo_prob]
         for k, v in sub_catalogo.items():
@@ -184,7 +193,6 @@ def main():
         mapa_algos = {"1": "GA", "2": "ACO", "3": "PSO", "4": "AIS", "5": "DE"}
         algo = mapa_algos.get(op_algo, "GA")
 
-        # Validación de compatibilidad rápida
         if algo in ["PSO", "DE"] and tipo_prob != "Continuo":
             print(f"\n  [AVISO] {algo} opera nativamente en espacios continuos. Se recomienda GA o ACO para {tipo_prob}.")
 
@@ -209,18 +217,22 @@ def main():
         if algo == "GA":
             generador = ejecutar_ga(prob_info["fn"], tipo_prob, objetivo, prob_info["dominio"], params["dim"], params)
         elif algo == "PSO":
-            # Conexión directa a la nueva función
             generador = ejecutar_pso(prob_info["fn"], tipo_prob, objetivo, prob_info["dominio"], params["dim"], params)
+        elif algo == "ACO":
+            # --- CORRECCIÓN --- 
+            # Inyectamos la matriz de distancias importada para que las hormigas puedan usarla
+            if "TSP" in prob_info["nombre"]:
+                params["matriz_distancias"] = DISTANCIAS_TSP
+            generador = ejecutar_aco(prob_info["fn"], tipo_prob, objetivo, prob_info["dominio"], params["dim"], params)
         else:
             print(f"  [!] Nota: Conecta aquí tu función ejecutar_{algo.lower()}() en algoritmos.py.")
             continue
 
         resultado_final = None
         for estado in generador:
-            # Actualiza la misma línea de la terminal en vivo
             sys.stdout.write(f"\r  Progreso: Iteración {estado['iteracion']}/{estado['total']} | Mejor Fitness: {estado['mejor_valor']:.6f}")
             sys.stdout.flush()
-            time.sleep(0.02) # Pequeña pausa visual para apreciar el avance en vivo
+            time.sleep(0.02)
             resultado_final = estado
 
         # 6. Reporte Final
@@ -228,7 +240,9 @@ def main():
         print(" RESULTADOS DE LA OPTIMIZACIÓN")
         print("=" * 50)
         print(f" * Mejor Fitness : {resultado_final['mejor_valor']:.6f}")
-        print(f" * Mejor Solución: {np.round(resultado_final['mejor_sol'], 4)}")
+        # Manejo seguro por si devuelve una lista en lugar de array
+        sol_print = np.round(resultado_final['mejor_sol'], 4) if isinstance(resultado_final['mejor_sol'], np.ndarray) else resultado_final['mejor_sol']
+        print(f" * Mejor Solución: {sol_print}")
         print(f" * Motivo Término: {resultado_final['motivo']}")
         print("=" * 50)
 
