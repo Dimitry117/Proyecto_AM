@@ -5,7 +5,7 @@ import csv
 import numpy as np
 import matplotlib.pyplot as plt
 from problemas import CATALOGO_PROBLEMAS, DISTANCIAS_TSP
-from algoritmos import ejecutar_ga
+from algoritmos import ejecutar_ga, ejecutar_pso
 
 def pedir_numero(mensaje, tipo_dato=int, minimo=None, maximo=None, default=None):
     """Valida tipo y rango de entrada del usuario."""
@@ -205,9 +205,12 @@ def main():
         # 5. Ejecución con visualización en tiempo real
         print("\n" + "-" * 50)
         print(f"Ejecutando {algo} en {prob_info['nombre']} ({objetivo})...")
-        
+
         if algo == "GA":
             generador = ejecutar_ga(prob_info["fn"], tipo_prob, objetivo, prob_info["dominio"], params["dim"], params)
+        elif algo == "PSO":
+            # Conexión directa a la nueva función
+            generador = ejecutar_pso(prob_info["fn"], tipo_prob, objetivo, prob_info["dominio"], params["dim"], params)
         else:
             print(f"  [!] Nota: Conecta aquí tu función ejecutar_{algo.lower()}() en algoritmos.py.")
             continue
