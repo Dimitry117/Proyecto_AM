@@ -5,7 +5,7 @@ import csv
 import numpy as np
 import matplotlib.pyplot as plt
 from problemas import CATALOGO_PROBLEMAS, DISTANCIAS_TSP
-from algoritmos import ejecutar_ga, ejecutar_pso, ejecutar_aco
+from algoritmos import ejecutar_ga, ejecutar_pso, ejecutar_aco, ejecutar_de, ejecutar_ais
 
 def pedir_numero(mensaje, tipo_dato=int, minimo=None, maximo=None, default=None):
     """Valida tipo y rango de entrada del usuario."""
@@ -219,14 +219,13 @@ def main():
         elif algo == "PSO":
             generador = ejecutar_pso(prob_info["fn"], tipo_prob, objetivo, prob_info["dominio"], params["dim"], params)
         elif algo == "ACO":
-            # --- CORRECCIÓN --- 
-            # Inyectamos la matriz de distancias importada para que las hormigas puedan usarla
             if "TSP" in prob_info["nombre"]:
                 params["matriz_distancias"] = DISTANCIAS_TSP
             generador = ejecutar_aco(prob_info["fn"], tipo_prob, objetivo, prob_info["dominio"], params["dim"], params)
-        else:
-            print(f"  [!] Nota: Conecta aquí tu función ejecutar_{algo.lower()}() en algoritmos.py.")
-            continue
+        elif algo == "DE":
+            generador = ejecutar_de(prob_info["fn"], tipo_prob, objetivo, prob_info["dominio"], params["dim"], params)
+        elif algo == "AIS":
+            generador = ejecutar_ais(prob_info["fn"], tipo_prob, objetivo, prob_info["dominio"], params["dim"], params)
 
         resultado_final = None
         for estado in generador:

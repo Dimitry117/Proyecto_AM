@@ -335,3 +335,182 @@ def ejecutar_aco(fn_eval, tipo_prob, objetivo, dominio, dim, params):
         "terminado": True,
         "motivo": motivo_termino
     }
+
+
+def ejecutar_de(fn_eval, tipo_prob, objetivo, dominio, dim, params):
+    if tipo_prob != "Continuo":
+        yield {
+            "iteracion": 0, "total": params["iteraciones"],
+            "mejor_valor": 0, "mejor_sol": [], "historial": [], "terminado": True,
+            "motivo": f"Error: DE opera nativamente en el tipo {tipo_prob}"
+        }
+        return
+
+    pop_size = params["poblacion"]
+    gens = params["iteraciones"]
+    F = params["F"]
+    CR = params["CR"]
+
+    # Inicialización
+    poblacion = np.random.uniform(dominio[0], dominio[1], (pop_size, dim))
+    valores_f = np.array([fn_eval(ind) for ind in poblacion])
+
+    mejor_global_val = None
+    mejor_global_sol = None
+    historial = []
+    sin_mejora = 0
+    motivo_termino = "Máximo de iteraciones alcanzado"
+
+    for gen in range(1, gens + 1):
+        nueva_poblacion = np.zeros_like(poblacion)
+        nuevos_valores_f = np.zeros_like(valores_f)
+
+        for i in range(pop_size):
+            # 1. Mutación: Elegir 3 vectores aleatorios distintos al actual
+            idxs = [idx for idx in range(pop_size) if idx != i]
+            a, b, c = poblacion[np.random.choice(idxs, 3, replace=False)]
+            mutante = np.clip(a + F * (b - c), dominio[0], dominio[1])
+
+            # 2. Cruce (Recombinación binomial)
+            cruce = np.random.rand(dim) < CR
+            if not np.any(cruce):  # Asegurar que al menos un gen mute
+                cruce[np.random.randint(dim)] = True
+            
+            vector_prueba = np.where(cruce, mutante, poblacion[i])
+            val_prueba = fn_eval(vector_prueba)
+
+            # 3. Selección
+            mejora = (val_prueba > valores_f[i]) if objetivo == "Maximizar" else (val_prueba < valores_f[i])
+            if mejora:
+                nueva_poblacion[i] = vector_prueba
+                nuevos_valores_f[i] = val_prueba
+            else:
+                nueva_poblacion[i] = poblacion[i]
+                nuevos_valores_f[i] = valores_f[i]
+
+        poblacion = nueva_poblacion
+        valores_f = nuevos_valores_f
+
+        # Actualizar mejor global
+        idx_mejor = np.argmax(valores_f) if objetivo == "Maximizar" else np.argmin(valores_f)
+        mejor_actual = valores_f[idx_mejor]
+
+        if mejor_global_val is None or (objetivo == "Maximizar" and mejor_actual > mejor_global_val) or (objetivo == "Minimizar" and mejor_actual < mejor_global_val):
+            mejor_global_val = mejor_actual
+            mejor_global_sol = poblacion[idx_mejor].copy()
+            sin_mejora = 0
+        else:
+            sin_mejora += 1
+
+        historial.append(float(mejor_global_val))
+
+        yield {
+            "iteracion": gen, "total": gens,
+            "mejor_valor": float(mejor_global_val), "mejor_sol": mejor_global_sol.copy(),
+            "historial": historial, "terminado": False, "motivo": ""
+        }
+
+        if sin_mejora >= 30 and gen > 30:
+            motivo_termino = f"Convergencia temprana (sin mejora por {sin_mejora} iteraciones)"
+            break
+
+    yield {
+        "iteracion": gen, "total": gens,
+        "mejor_valor": float(mejor_global_val), "mejor_sol": mejor_global_sol.copy(),
+        "historial": historial, "terminado": True, "motivo": motivo_termino
+    }
+
+
+def ejecutar_ais(fn_eval, tipo_prob, objetivo, dominio, dim, params):
+    """
+    Sistema Inmune Artificial (AIS) - Basado en Selección Clonal (CLONALG).
+    Implementación adaptada para espacios continuos.
+    """
+    if tipo_prob != "Continuo":
+        yield {
+            "iteracion": 0, "total": params["iteraciones"],
+            "mejor_valor": 0, "mejor_sol": [], "historial": [], "terminado": True,
+            "motivo": f"Error: Esta versión de AIS opera nativamente en el tipo Continuo"
+        }
+        return
+
+    pop_size = params["anticuerpos"]
+    gens = params["iteraciones"]
+    beta = params["factor_clonacion"]
+
+    # Inicialización de anticuerpos
+    poblacion = np.random.uniform(dominio[0], dominio[1], (pop_size, dim))
+    
+    mejor_global_val = None
+    mejor_global_sol = None
+    historial = []
+    sin_mejora = 0
+    motivo_termino = "Máximo de iteraciones alcanzado"
+    rango_dominio = dominio[1] - dominio[0]
+
+    for gen in range(1, gens + 1):
+        valores_f = np.array([fn_eval(ind) for ind in poblacion])
+        
+        # Ordenar anticuerpos (mejor al peor)
+        indices_ordenados = np.argsort(valores_f)
+        if objetivo == "Maximizar":
+            indices_ordenados = indices_ordenados[::-1]
+            
+        poblacion = poblacion[indices_ordenados]
+        valores_f = valores_f[indices_ordenados]
+
+        # Actualizar global
+        if mejor_global_val is None or (objetivo == "Maximizar" and valores_f[0] > mejor_global_val) or (objetivo == "Minimizar" and valores_f[0] < mejor_global_val):
+            mejor_global_val = valores_f[0]
+            mejor_global_sol = poblacion[0].copy()
+            sin_mejora = 0
+        else:
+            sin_mejora += 1
+
+        historial.append(float(mejor_global_val))
+
+        yield {
+            "iteracion": gen, "total": gens,
+            "mejor_valor": float(mejor_global_val), "mejor_sol": mejor_global_sol.copy(),
+            "historial": historial, "terminado": False, "motivo": ""
+        }
+
+        if sin_mejora >= 30 and gen > 30:
+            motivo_termino = f"Convergencia temprana (sin mejora por {sin_mejora} iteraciones)"
+            break
+
+        # Clonación y Mutación (peores anticuerpos mutan más)
+        clones = []
+        for i in range(pop_size):
+            n_clones = max(1, int((beta * pop_size) / (i + 1))) # Más clones para los mejores
+            tasa_mutacion = (i + 1) / pop_size # 0.0 (mejor) a 1.0 (peor)
+            
+            for _ in range(n_clones):
+                mutacion = np.random.normal(0, rango_dominio * 0.1 * tasa_mutacion, dim)
+                clon = np.clip(poblacion[i] + mutacion, dominio[0], dominio[1])
+                clones.append(clon)
+                
+        clones = np.array(clones)
+        valores_clones = np.array([fn_eval(ind) for ind in clones])
+
+        # Selección: Juntar originales y clones, y conservar a los mejores
+        poblacion_total = np.vstack((poblacion, clones))
+        valores_totales = np.concatenate((valores_f, valores_clones))
+        
+        indices_tot_ord = np.argsort(valores_totales)
+        if objetivo == "Maximizar":
+            indices_tot_ord = indices_tot_ord[::-1]
+            
+        poblacion = poblacion_total[indices_tot_ord][:pop_size]
+
+        # Edición del receptor: Reemplazar el 10% de los peores con nuevos (diversidad)
+        num_reemplazos = max(1, int(pop_size * 0.1))
+        nuevos_anticuerpos = np.random.uniform(dominio[0], dominio[1], (num_reemplazos, dim))
+        poblacion[-num_reemplazos:] = nuevos_anticuerpos
+
+    # Resultado final
+    yield {
+        "iteracion": gen, "total": gens,
+        "mejor_valor": float(mejor_global_val), "mejor_sol": mejor_global_sol.copy(),
+        "historial": historial, "terminado": True, "motivo": motivo_termino
+    }
